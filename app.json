@@ -17,7 +17,13 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.ankurisuai",
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,9 +37,48 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#04070D"
         }
-      ]
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Kurisu needs the microphone to hear you during voice calls. Audio stays on your device.",
+          "speechRecognitionPermission": "Kurisu transcribes your voice on-device so she can reply.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts"
+          ]
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "buildArchs": [
+              "arm64-v8a",
+              "x86_64"
+            ],
+            "enableMinifyInReleaseBuilds": true,
+            "extraProguardRules": "# WorkManager/Room: generated *_Impl classes are created by reflection\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.impl.** { *; }\n-keep class androidx.work.** { *; }\n# Native (JNI) libraries\n-keep class com.sherpaonnx.** { *; }\n-keep class com.k2fsa.sherpa.onnx.** { *; }\n-keep class ai.onnxruntime.** { *; }\n-keep class com.eko.** { *; }\n-keep class com.drpogodin.reactnativefs.** { *; }"
+          }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#4FD8FF",
+          "enableRemoteNotifications": false
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Kurisu reads today's events for your briefing and adds events you ask her to."
+        }
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
