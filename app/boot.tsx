@@ -19,7 +19,7 @@ import { HudRing } from '@/components/hud/HudRing';
 import { Scanlines } from '@/components/hud/Scanlines';
 import { SegmentBar } from '@/components/hud/SegmentBar';
 import { HUD, MONO } from '@/constants/theme';
-import { BRAIN_MODEL } from '@/constants/models';
+import { LOCAL_MODEL } from '@/services/localBrain';
 import { BrainStatus, useAppState } from '@/context/AppContext';
 import { sttSupported } from '@/services/voice';
 
@@ -31,29 +31,26 @@ interface BootLine {
 
 function buildBootLines({
   brainStatus,
-  webSearch,
   notesCount,
   attitude,
   micReady,
 }: {
   brainStatus: BrainStatus;
-  webSearch: boolean;
   notesCount: number;
   attitude: number;
   micReady: boolean;
 }): BootLine[] {
   const linked = brainStatus === 'ready' || brainStatus === 'checking';
   const brainLine: BootLine = linked
-    ? { time: '00.177', label: `link ${BRAIN_MODEL.id}`, status: 'OK' }
-    : brainStatus === 'error'
-      ? { time: '00.177', label: 'gemini key rejected → settings', status: 'WARN' }
-      : { time: '00.177', label: 'gemini api key missing → settings', status: 'WARN' };
+    ? { time: '00.177', label: `load ${LOCAL_MODEL.name.toLowerCase()} executorch`, status: 'OK' }
+    : brainStatus === 'unsupported'
+      ? { time: '00.177', label: 'executorch missing → dev build', status: 'WARN' }
+      : { time: '00.177', label: 'brain model missing → settings', status: 'WARN' };
   return [
     { time: '00.012', label: 'kernel ankurisu-core v0.3.0', status: 'OK' },
     { time: '00.048', label: 'mount /data/lab (sqlite kv)', status: 'OK' },
-    { time: '00.103', label: 'net uplink generativelanguage.googleapis.com', status: 'OK' },
+    { time: '00.103', label: 'mount /data/brain (on-device)', status: linked ? 'OK' : 'OFF' },
     brainLine,
-    { time: '00.402', label: 'tool google_search grounding', status: linked && webSearch ? 'OK' : 'OFF' },
     { time: '00.511', label: 'load stt.on-device', status: micReady ? 'OK' : 'WARN' },
     { time: '00.596', label: 'load tts.system voice=kurisu', status: 'OK' },
     { time: '00.640', label: 'load mood-parser 16 labels', status: 'OK' },
@@ -74,7 +71,6 @@ export default function BootScreen() {
   const { brain, settings, notes } = useAppState();
   const BOOT_LINES = buildBootLines({
     brainStatus: brain.status,
-    webSearch: settings.webKnowledge,
     notesCount: notes.length,
     attitude: settings.attitude,
     micReady: sttSupported(),

@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AttitudeSlider } from '@/components/AttitudeSlider';
@@ -10,10 +10,11 @@ import { HudFrame } from '@/components/hud/HudFrame';
 import { SectionLabel } from '@/components/hud/SectionLabel';
 import { ToggleSwitch } from '@/components/ToggleSwitch';
 import { HUD, MONO } from '@/constants/theme';
-import { BRAIN_MODEL, formatBytes } from '@/constants/models';
-import { usingEnvKey } from '@/services/llm';
+import { formatBytes } from '@/constants/models';
 import { LanguageOption, useAppState, type VoicePackState } from '@/context/AppContext';
+import { NEURAL_MODEL, NEURAL_VOICES, neuralVoice, neuralVoiceById } from '@/services/neuralVoice';
 import { WAKE_MODEL } from '@/services/wakeWord';
+import { LOCAL_MODEL } from '@/services/localBrain';
 import { exactAlarmsAllowed, requestExactAlarms } from '@/services/notifications';
 import {
   DEFAULT_TUNE,
@@ -128,6 +129,166 @@ function WakeWordRow({
   );
 }
 
+/** On-device anime-style voice (Kokoro): toggling it on downloads the model the first time. */
+function NeuralVoiceRow({
+  enabled,
+  model,
+  onToggle,
+  onCancel,
+  onRemove,
+}: {
+  enabled: boolean;
+  model: VoicePackState;
+  onToggle: (on: boolean) => void;
+  onCancel: () => void;
+  onRemove: () => void;
+}) {
+  const busy = model.status === 'downloading' || model.status === 'extracting';
+  const subtitle =
+    model.status === 'unsupported'
+      ? 'Needs a development build (not available in Expo Go or on web)'
+      : busy
+        ? `${model.status === 'downloading' ? 'Downloading' : 'Unpacking'} voice model… ${Math.round(model.progress * 100)}%`
+        : model.status === 'error'
+          ? `Install failed: ${model.error ?? 'unknown error'}`
+          : model.status === 'ready'
+            ? 'Expressive on-device voice. Works offline'
+            : `Expressive anime-style voice · ${formatBytes(NEURAL_MODEL.sizeBytes)} download, works offline`;
+  return (
+    <View className="py-4">
+      <View className="flex-row items-center justify-between">
+        <View className="flex-1 pr-4">
+          <Text className="text-[15.5px] font-medium" style={{ color: HUD.text }}>
+            Neural voice
+          </Text>
+          <Text
+            className="mt-0.5 text-[12.5px]"
+            style={{ color: model.status === 'error' ? HUD.warn : HUD.textMuted }}
+          >
+            {subtitle}
+          </Text>
+        </View>
+        {busy ? (
+          <Pressable onPress={onCancel} hitSlop={8} className="active:opacity-75">
+            <Text style={[MONO, { color: HUD.warn }]} className="text-[11px] tracking-[2px]">
+              CANCEL
+            </Text>
+          </Pressable>
+        ) : (
+          <ToggleSwitch
+            value={enabled && model.status === 'ready'}
+            onValueChange={(v) => model.status !== 'unsupported' && onToggle(v)}
+          />
+        )}
+      </View>
+      {model.status === 'ready' && !enabled && (
+        <Pressable onPress={onRemove} hitSlop={8} className="mt-2 self-start active:opacity-75">
+          <Text style={[MONO, { color: HUD.textDim }]} className="text-[10.5px] tracking-[1.5px]">
+            REMOVE MODEL
+          </Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+const LOCAL_SIZE = Platform.OS === 'ios' ? LOCAL_MODEL.sizeBytes.ios : LOCAL_MODEL.sizeBytes.android;
+
+/** On-device brain: download / pause / remove the model. */
+function LocalBrainCard({
+  model,
+  onInstall,
+  onCancel,
+  onRemove,
+}: {
+  model: VoicePackState;
+  onInstall: () => void;
+  onCancel: () => void;
+  onRemove: () => void;
+}) {
+  const ready = model.status === 'ready';
+  const downloading = model.status === 'downloading';
+  const status =
+    model.status === 'unsupported'
+      ? '○ NEEDS A DEVELOPMENT BUILD'
+      : ready
+        ? '● DOWNLOADED · RUNS OFFLINE'
+        : downloading
+          ? `↓ DOWNLOADING · ${Math.round(model.progress * 100)}%`
+          : model.status === 'error'
+            ? '✕ DOWNLOAD FAILED'
+            : `○ NOT DOWNLOADED · ${formatBytes(LOCAL_SIZE)}`;
+  return (
+    <HudFrame className="p-4">
+      <HudFrame
+        corner={8}
+        color={ready ? HUD.holo : HUD.line}
+        style={{ backgroundColor: ready ? HUD.holoSoft : HUD.bg, borderColor: HUD.holoDeep }}
+        className="p-3.5"
+      >
+        <Text className="text-[15.5px] font-semibold" style={{ color: HUD.text }}>
+          {LOCAL_MODEL.name}
+        </Text>
+        <Text style={[MONO, { color: HUD.textMuted }]} className="mt-1 text-[9.5px] tracking-[0.5px]">
+          {LOCAL_MODEL.tagline}
+        </Text>
+        <Text
+          style={[MONO, { color: ready ? HUD.ok : model.status === 'error' ? HUD.crimson : HUD.textDim }]}
+          className="mt-1 text-[9px] tracking-[1px]"
+        >
+          {status}
+        </Text>
+        {downloading && (
+          <View className="mt-2.5 h-[3px]" style={{ backgroundColor: HUD.lineDim }}>
+            <View className="h-full" style={{ width: `${Math.round(model.progress * 100)}%`, backgroundColor: HUD.holo }} />
+          </View>
+        )}
+      </HudFrame>
+
+      <View className="mt-4 gap-3">
+        {model.status === 'error' && model.error && (
+          <Text style={[MONO, { color: HUD.crimson }]} className="text-[10.5px]">
+            {model.error}
+          </Text>
+        )}
+        {ready ? (
+          <>
+            <Text className="text-[12.5px]" style={{ color: HUD.textMuted }}>
+              She thinks entirely on your phone, even offline. Nothing you say leaves the device.
+            </Text>
+            <Pressable onPress={onRemove} className="items-center py-3 active:opacity-80" style={{ borderWidth: 1, borderColor: HUD.crimson }}>
+              <Text style={[MONO, { color: HUD.crimson }]} className="text-[11px] tracking-[2px]">
+                REMOVE MODEL
+              </Text>
+            </Pressable>
+          </>
+        ) : model.status === 'unsupported' ? (
+          <Text className="text-[12.5px]" style={{ color: HUD.textMuted }}>
+            The on-device brain uses native ExecuTorch code, so it only runs in a development build (not in Expo Go or on web).
+          </Text>
+        ) : downloading ? (
+          <Pressable onPress={onCancel} className="items-center py-3 active:opacity-80" style={{ borderWidth: 1, borderColor: HUD.warn }}>
+            <Text style={[MONO, { color: HUD.warn }]} className="text-[11px] tracking-[2px]">
+              PAUSE DOWNLOAD
+            </Text>
+          </Pressable>
+        ) : (
+          <>
+            <Text className="text-[12.5px]" style={{ color: HUD.textMuted }}>
+Kurisu needs her brain before she can talk: a small language model that runs on your phone, offline. Nothing you say leaves the device. Works best on recent phones with plenty of RAM.
+            </Text>
+            <Pressable onPress={onInstall} className="items-center py-3 active:opacity-85" style={{ backgroundColor: HUD.holo }}>
+              <Text style={[MONO, { color: HUD.onHolo }]} className="text-[11px] font-bold tracking-[2px]">
+                {model.status === 'error' ? 'RETRY DOWNLOAD' : `DOWNLOAD · ${formatBytes(LOCAL_SIZE)}`}
+              </Text>
+            </Pressable>
+          </>
+        )}
+      </View>
+    </HudFrame>
+  );
+}
+
 /** A slider over [min, max] (AttitudeSlider works in 0..1). */
 function TuneSlider({
   title,
@@ -183,15 +344,21 @@ export default function SettingsScreen() {
   const {
     settings,
     updateSettings,
-    brain,
-    saveApiKey,
-    removeApiKey,
     clearChat,
     wakeModel,
     installWakeModel,
     cancelWakeModelInstall,
     removeWakeModel,
+    localModel,
+    installLocalModel,
+    cancelLocalModelInstall,
+    removeLocalModel,
+    neuralModel,
+    installNeuralModel,
+    cancelNeuralModelInstall,
+    removeNeuralModel,
   } = useAppState();
+  const neuralOn = settings.neuralVoice && neuralModel.status === 'ready';
   const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [testState, setTestState] = useState<'idle' | 'loading' | 'playing'>('idle');
 
@@ -206,7 +373,13 @@ export default function SettingsScreen() {
     listVoices(settings.language).then(setVoices);
   }, [settings.language]);
 
-  useEffect(() => () => stopSpeaking(), []);
+  useEffect(
+    () => () => {
+      stopSpeaking();
+      neuralVoice.unload(); // the call screen reloads it when it opens
+    },
+    []
+  );
 
   // Android 12+ may delay timers by minutes unless exact alarms are allowed.
   const [exactAlarms, setExactAlarms] = useState(true);
@@ -222,15 +395,37 @@ export default function SettingsScreen() {
       ? `AUTO · ${voices[0].name}`
       : 'SYSTEM DEFAULT';
 
-  const voiceLabel = currentVoiceLabel;
+  // Tuning applies instantly; a short sample plays once the slider stops moving.
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+    },
+    []
+  );
+
+  const neuralChoice = neuralVoiceById(settings.neuralVoiceId);
+  const voiceLabel = neuralOn ? neuralChoice.label : currentVoiceLabel;
 
   const cycleVoice = () => {
+    if (neuralOn) {
+      const i = NEURAL_VOICES.findIndex((v) => v.id === neuralChoice.id);
+      const next = NEURAL_VOICES[(i + 1) % NEURAL_VOICES.length];
+      updateSettings({ neuralVoiceId: next.id });
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+      // Let the user hear each voice as they cycle through.
+      previewTimer.current = setTimeout(
+        () => playSample(settings.language === 'English' ? 'Hmph. How about this one?' : 'Hmph. Ito ba?', settings.voiceTune, next.sid),
+        450
+      );
+      return;
+    }
     if (!voices.length) return;
     const next = voiceIndex + 1;
     updateSettings({ voiceId: next >= voices.length ? undefined : voices[next].identifier });
   };
 
-  const playSample = (line: string, tune: VoiceTune) => {
+  const playSample = (line: string, tune: VoiceTune, sid = neuralOn ? neuralChoice.sid : undefined) => {
     stopSpeaking();
     setTestState('loading');
     speak(line, {
@@ -238,6 +433,7 @@ export default function SettingsScreen() {
       language: settings.language,
       voice: settings.voiceId ?? voices[0]?.identifier,
       tune,
+      neuralSid: sid,
       onStart: () => setTestState((s) => (s === 'loading' ? 'playing' : s)),
       onDone: () => setTestState('idle'),
     });
@@ -257,14 +453,6 @@ export default function SettingsScreen() {
     );
   };
 
-  // Tuning applies instantly; a short sample plays once the slider stops moving.
-  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (previewTimer.current) clearTimeout(previewTimer.current);
-    },
-    []
-  );
   const setTune = (patch: Partial<VoiceTune>) => {
     const next = { ...settings.voiceTune, ...patch };
     updateSettings({ voiceTune: next });
@@ -276,29 +464,24 @@ export default function SettingsScreen() {
   };
   const activePreset = TUNE_PRESETS.find((p) => sameTune(p.tune, settings.voiceTune))?.id;
 
-  const linked = brain.status === 'ready';
-  const [keyDraft, setKeyDraft] = useState('');
-  const [keyState, setKeyState] = useState<'idle' | 'checking'>('idle');
-  const [keyError, setKeyError] = useState<string | null>(null);
+  const confirmDownloadLocal = () =>
+    Alert.alert(
+      'Download on-device brain?',
+      `About ${formatBytes(LOCAL_SIZE)}. Use Wi-Fi if you can. A paused download resumes where it stopped.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Download', onPress: () => installLocalModel().catch(() => {}) },
+      ]
+    );
 
-  const submitKey = async () => {
-    if (!keyDraft.trim() || keyState === 'checking') return;
-    setKeyState('checking');
-    setKeyError(null);
-    try {
-      await saveApiKey(keyDraft);
-      setKeyDraft('');
-    } catch (e) {
-      setKeyError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setKeyState('idle');
-    }
-  };
-
-  const confirmRemoveKey = () =>
-    Alert.alert('Remove API key?', 'Kurisu goes back to scripted replies until you add a key again.', [
+  const confirmRemoveLocal = () =>
+    Alert.alert('Remove on-device brain?', `Frees about ${formatBytes(LOCAL_SIZE)}. She goes back to scripted replies until you download it again.`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => removeApiKey() },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => removeLocalModel(),
+      },
     ]);
 
   const confirmClearChat = () =>
@@ -399,13 +582,30 @@ export default function SettingsScreen() {
           {/* VOICE */}
           <SectionLabel index="02" title="VOICE" className="mb-3" />
           <HudFrame className="mb-7 px-4">
+            <NeuralVoiceRow
+              enabled={settings.neuralVoice}
+              model={neuralModel}
+              onToggle={async (on) => {
+                if (!on) return updateSettings({ neuralVoice: false });
+                if (neuralModel.status === 'ready') return updateSettings({ neuralVoice: true });
+                try {
+                  await installNeuralModel();
+                  updateSettings({ neuralVoice: true });
+                } catch {
+                  // Status row shows the error.
+                }
+              }}
+              onCancel={cancelNeuralModelInstall}
+              onRemove={removeNeuralModel}
+            />
+            <Divider />
             <Pressable onPress={cycleVoice} className="flex-row items-center justify-between py-4 active:opacity-75">
               <View className="flex-1 pr-4">
                 <Text className="text-[15.5px] font-medium" style={{ color: HUD.text }}>
                   Her voice
                 </Text>
                 <Text className="mt-0.5 text-[12.5px]" style={{ color: HUD.textMuted }}>
-                  Tap to cycle system voices
+                  {neuralOn ? `${neuralChoice.hint} · tap to cycle` : 'Tap to cycle system voices'}
                 </Text>
               </View>
               <Text
@@ -490,13 +690,6 @@ export default function SettingsScreen() {
               onChange={(pushToTalk) => updateSettings({ pushToTalk })}
             />
             <Divider />
-            <ToggleRow
-              title="Continuous conversation"
-              subtitle="Keep listening after she answers — just keep talking"
-              value={settings.continuousMode}
-              onChange={(continuousMode) => updateSettings({ continuousMode })}
-            />
-            <Divider />
             <WakeWordRow
               enabled={settings.wakePhrase}
               model={wakeModel}
@@ -546,13 +739,6 @@ export default function SettingsScreen() {
               </>
             )}
             <ToggleRow
-              title="Web search"
-              subtitle="She can search Google for news, current facts and anything she isn't sure about"
-              value={settings.webKnowledge}
-              onChange={(webKnowledge) => updateSettings({ webKnowledge })}
-            />
-            <Divider />
-            <ToggleRow
               title="Mood haptics"
               subtitle="Light buzz when her mood shifts"
               value={settings.moodHaptics}
@@ -584,106 +770,13 @@ export default function SettingsScreen() {
           </HudFrame>
 
           {/* BRAIN */}
-          <SectionLabel index="03" title="BRAIN · GEMINI" className="mb-3" />
-          <HudFrame className="p-4">
-            <HudFrame
-              corner={8}
-              color={linked ? HUD.holo : HUD.line}
-              style={{ backgroundColor: linked ? HUD.holoSoft : HUD.bg, borderColor: HUD.holoDeep }}
-              className="p-3.5"
-            >
-              <Text className="text-[15.5px] font-semibold" style={{ color: HUD.text }}>
-                {BRAIN_MODEL.name}
-              </Text>
-              <Text style={[MONO, { color: HUD.textMuted }]} className="mt-1 text-[9.5px] tracking-[0.5px]">
-                {BRAIN_MODEL.tagline}
-              </Text>
-              <Text
-                style={[MONO, { color: linked ? HUD.ok : brain.status === 'error' ? HUD.crimson : HUD.textDim }]}
-                className="mt-1 text-[9px] tracking-[1px]"
-              >
-                {linked
-                  ? usingEnvKey()
-                    ? '● KEY FROM .ENV.LOCAL'
-                    : '● API KEY SAVED'
-                  : brain.status === 'error'
-                    ? '✕ API KEY REJECTED'
-                    : '○ NO API KEY'}
-              </Text>
-            </HudFrame>
-
-            <View className="mt-4 gap-3">
-              {brain.error && (
-                <Text style={[MONO, { color: HUD.crimson }]} className="text-[10.5px]">
-                  {brain.error}
-                </Text>
-              )}
-
-              {linked && usingEnvKey() ? (
-                <Text className="text-[12.5px]" style={{ color: HUD.textMuted }}>
-                  Using EXPO_PUBLIC_GEMINI_API_KEY from .env.local. Edit that file to change it.
-                </Text>
-              ) : linked ? (
-                <Pressable
-                  onPress={confirmRemoveKey}
-                  className="items-center py-3 active:opacity-80"
-                  style={{ borderWidth: 1, borderColor: HUD.crimson }}
-                >
-                  <Text style={[MONO, { color: HUD.crimson }]} className="text-[11px] tracking-[2px]">
-                    REMOVE API KEY
-                  </Text>
-                </Pressable>
-              ) : (
-                <>
-                  <Text className="text-[12.5px]" style={{ color: HUD.textMuted }}>
-                    Paste a Gemini API key. It stays in your phone&apos;s secure storage and is only sent to Google.
-                  </Text>
-                  <View className="px-3" style={{ borderWidth: 1, borderColor: keyError ? HUD.crimson : HUD.line }}>
-                    <TextInput
-                      value={keyDraft}
-                      onChangeText={(t) => {
-                        setKeyDraft(t);
-                        setKeyError(null);
-                      }}
-                      onSubmitEditing={submitKey}
-                      placeholder="AIza…"
-                      placeholderTextColor={HUD.textDim}
-                      secureTextEntry
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      returnKeyType="done"
-                      className="py-3 text-[14px]"
-                      style={[MONO, { color: HUD.text }]}
-                    />
-                  </View>
-                  {keyError && (
-                    <Text style={[MONO, { color: HUD.crimson }]} className="text-[10.5px]">
-                      {keyError}
-                    </Text>
-                  )}
-                  <Pressable
-                    onPress={submitKey}
-                    disabled={!keyDraft.trim() || keyState === 'checking'}
-                    className="items-center py-3 active:opacity-85"
-                    style={{ backgroundColor: HUD.holo, opacity: keyDraft.trim() ? 1 : 0.4 }}
-                  >
-                    {keyState === 'checking' ? (
-                      <ActivityIndicator color={HUD.onHolo} />
-                    ) : (
-                      <Text style={[MONO, { color: HUD.onHolo }]} className="text-[11px] font-bold tracking-[2px]">
-                        CONNECT
-                      </Text>
-                    )}
-                  </Pressable>
-                  <Pressable onPress={() => Linking.openURL(BRAIN_MODEL.keyUrl)} className="items-center py-1 active:opacity-70">
-                    <Text style={[MONO, { color: HUD.holo }]} className="text-[10.5px] tracking-[1px]">
-                      GET A FREE KEY AT AISTUDIO.GOOGLE.COM ↗
-                    </Text>
-                  </Pressable>
-                </>
-              )}
-            </View>
-          </HudFrame>
+          <SectionLabel index="03" title="BRAIN · ON-DEVICE" className="mb-3" />
+          <LocalBrainCard
+            model={localModel}
+            onInstall={confirmDownloadLocal}
+            onCancel={cancelLocalModelInstall}
+            onRemove={confirmRemoveLocal}
+          />
 
           {/* DATA */}
           <SectionLabel index="04" title="DATA" className="mb-3 mt-7" />

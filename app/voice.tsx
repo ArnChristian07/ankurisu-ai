@@ -29,8 +29,9 @@ import { Scanlines } from '@/components/hud/Scanlines';
 import { WaveformVisualizer } from '@/components/WaveformVisualizer';
 import { KurisuMood, MOOD_COLORS, MOOD_LIST, SPRITE_MAP } from '@/constants/sprites';
 import { HUD, MONO } from '@/constants/theme';
-import { AskResult, useAppState } from '@/context/AppContext';
+import { AskResult, neuralSidFor, useAppState } from '@/context/AppContext';
 import type { ParsedReply } from '@/services/persona';
+import { neuralVoice } from '@/services/neuralVoice';
 import { wakeWord } from '@/services/wakeWord';
 import {
   abortListening,
@@ -111,7 +112,7 @@ function LinkTimer({ online }: { online: boolean }) {
   const secs = (secondsElapsed % 60).toString().padStart(2, '0');
   return (
     <Text style={[MONO, { color: HUD.textMuted }]} className="text-[10.5px] tracking-[1px]">
-      LINK {mins}:{secs} · {online ? 'GEMINI' : 'NO BRAIN'}
+      LINK {mins}:{secs} · {online ? 'ON-DEVICE' : 'NO BRAIN'}
     </Text>
   );
 }
@@ -312,6 +313,7 @@ export default function VoiceCallScreen() {
       language: settings.language,
       voice: voiceId,
       tune: settings.voiceTune,
+      neuralSid: neuralSidFor(settings),
       // Switch to "speaking" when audio actually starts, not when text arrives.
       onStart: () => setStatus((s) => (s === 'thinking' ? 'speaking' : s)),
       onDone: () => {
@@ -517,6 +519,17 @@ export default function VoiceCallScreen() {
     },
     []
   );
+  // Load the neural voice while the call opens so her first line isn't delayed; free it after.
+  // (Re-runs on focus: Settings frees the model when it closes.)
+  useEffect(() => {
+    if (settings.neuralVoice && focused) neuralVoice.preload();
+  }, [settings.neuralVoice, focused]);
+  useEffect(
+    () => () => {
+      neuralVoice.unload();
+    },
+    []
+  );
 
   const endCall = () => {
     cleanupListenRef.current();
@@ -544,12 +557,12 @@ export default function VoiceCallScreen() {
   const ctxLabel = brain.contextUsed ? `${(brain.contextUsed / 1000).toFixed(1)}k` : '—';
   const coreLabel =
     brain.status === 'ready'
-      ? 'ONLINE'
+      ? 'ON-DEVICE'
       : brain.status === 'checking'
         ? 'LINKING'
-        : brain.status === 'error'
-          ? 'BAD KEY'
-          : 'NO KEY';
+        : brain.status === 'unsupported'
+          ? 'DEV BUILD'
+          : 'NO BRAIN';
   const coreSize = Math.min(screenWidth * 1.08, 460);
 
   return (

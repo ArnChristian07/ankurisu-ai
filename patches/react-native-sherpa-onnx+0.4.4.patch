@@ -1,0 +1,30 @@
+diff --git a/node_modules/react-native-sherpa-onnx/android/src/main/java/com/sherpaonnx/SherpaOnnxOnlineSttHelper.kt b/node_modules/react-native-sherpa-onnx/android/src/main/java/com/sherpaonnx/SherpaOnnxOnlineSttHelper.kt
+index 76e0e5c..1d6d565 100644
+--- a/node_modules/react-native-sherpa-onnx/android/src/main/java/com/sherpaonnx/SherpaOnnxOnlineSttHelper.kt
++++ b/node_modules/react-native-sherpa-onnx/android/src/main/java/com/sherpaonnx/SherpaOnnxOnlineSttHelper.kt
+@@ -176,7 +176,9 @@ internal class SherpaOnnxOnlineSttHelper(
+         numThreads = numThreads ?: 1,
+         debug = debug ?: false,
+         provider = provider ?: "cpu",
+-        modelType = "zipformer"
++        // Empty = read the type from the model's metadata. Forcing "zipformer" (v1) made
++        // sherpa-onnx exit() the whole app on Zipformer2 models.
++        modelType = ""
+       )
+       "paraformer" -> OnlineModelConfig(
+         paraformer = OnlineParaformerModelConfig(
+diff --git a/node_modules/react-native-sherpa-onnx/ios/online_stt/sherpa-onnx-online-stt-wrapper.mm b/node_modules/react-native-sherpa-onnx/ios/online_stt/sherpa-onnx-online-stt-wrapper.mm
+index 08a1393..6e2f3fd 100644
+--- a/node_modules/react-native-sherpa-onnx/ios/online_stt/sherpa-onnx-online-stt-wrapper.mm
++++ b/node_modules/react-native-sherpa-onnx/ios/online_stt/sherpa-onnx-online-stt-wrapper.mm
+@@ -162,7 +162,9 @@ OnlineSttInitResult OnlineSttWrapper::initialize(
+         config.model_config.transducer.encoder = paths["encoder"];
+         config.model_config.transducer.decoder = paths["decoder"];
+         config.model_config.transducer.joiner = paths["joiner"];
+-        config.model_config.model_type = "zipformer";
++        // Empty = read the type from the model's metadata. Forcing "zipformer" (v1) made
++        // sherpa-onnx exit() the whole app on Zipformer2 models.
++        config.model_config.model_type = "";
+     } else if (modelType == "paraformer") {
+         config.model_config.paraformer.encoder = paths["encoder"];
+         config.model_config.paraformer.decoder = paths["decoder"];

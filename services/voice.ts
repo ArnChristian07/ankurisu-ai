@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import type { KurisuMood } from '@/constants/sprites';
 import type { LanguageOption } from '@/context/AppContext';
+import { neuralVoice, type NeuralStream } from '@/services/neuralVoice';
 
 /* ──────────────────────────────  TTS  ────────────────────────────── */
 
@@ -149,6 +150,8 @@ export interface SpeakOptions {
   voice?: string;
   /** Pitch / speed / expression tuning. */
   tune?: VoiceTune;
+  /** Speak with the on-device Kokoro voice (this speaker id) instead of the system voice. */
+  neuralSid?: number;
   onStart?: () => void;
   onDone?: () => void;
 }
@@ -170,22 +173,9 @@ function systemSpeechOptions(mood: KurisuMood, tune: VoiceTune | undefined) {
 }
 
 export function speak(text: string, options: SpeakOptions) {
-  const { mood, language, voice, tune, onStart, onDone } = options;
-  const cleaned = prepareForSpeech(text);
-  if (!cleaned) {
-    onDone?.();
-    return;
-  }
-
-  Speech.speak(cleaned, {
-    language: localeFor(language),
-    voice,
-    ...systemSpeechOptions(mood, tune),
-    onStart,
-    onDone,
-    onStopped: onDone,
-    onError: () => onDone?.(),
-  });
+  const stream = createSpeechStream(options);
+  stream.push(text);
+  stream.end();
 }
 
 /* ── Streaming speech: speak a reply sentence-by-sentence while the LLM is still writing it ── */
@@ -250,10 +240,56 @@ function systemStream(options: SpeakOptions): SpeechStream {
   };
 }
 
-/** Opens a speech stream on the system voice; only one plays at a time. */
+/**
+ * Neural (Kokoro) stream. If the engine can't start (model missing or failed to load), it hands
+ * everything pushed so far to the system voice instead, so she is never silent.
+ */
+function neuralStream(options: SpeakOptions, sid: number): SpeechStream {
+  const { mood, tune } = options;
+  const pushed: { text: string; mood?: KurisuMood }[] = [];
+  let ended = false;
+  let fallback: SpeechStream | null = null;
+
+  const inner: NeuralStream = neuralVoice.createStream({
+    sid,
+    pitch: (tune ?? DEFAULT_TUNE).pitch,
+    onStart: options.onStart,
+    onDone: options.onDone,
+    onFail: (message) => {
+      console.warn('[kurisu] neural voice unavailable, using the system voice:', message);
+      fallback = systemStream(options);
+      if (currentSpeech === wrapper) currentSpeech = fallback;
+      pushed.forEach((p) => fallback!.push(p.text, p.mood));
+      if (ended) fallback.end();
+    },
+  });
+
+  const wrapper: SpeechStream = {
+    push(text, sentenceMood) {
+      if (fallback) return fallback.push(text, sentenceMood);
+      const cleaned = prepareForSpeech(text);
+      if (!cleaned) return;
+      pushed.push({ text, mood: sentenceMood });
+      inner.push(cleaned, prosodyFor(sentenceMood ?? mood, tune).rate);
+    },
+    end() {
+      ended = true;
+      if (fallback) fallback.end();
+      else inner.end();
+    },
+    cancel() {
+      if (fallback) fallback.cancel();
+      else inner.cancel();
+    },
+  };
+  return wrapper;
+}
+
+/** Opens a speech stream (neural voice when chosen and installed, else system); only one plays at a time. */
 export function createSpeechStream(options: SpeakOptions): SpeechStream {
   currentSpeech?.cancel();
-  const stream = systemStream(options);
+  const useNeural = options.neuralSid != null && neuralVoice.isInstalled();
+  const stream = useNeural ? neuralStream(options, options.neuralSid!) : systemStream(options);
   currentSpeech = stream;
   return stream;
 }

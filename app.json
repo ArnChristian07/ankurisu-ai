@@ -8,7 +8,8 @@
     "scheme": "ankurisuai",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "deploymentTarget": "17.0"
     },
     "android": {
       "adaptiveIcon": {
@@ -56,12 +57,13 @@
         "expo-build-properties",
         {
           "android": {
+            "minSdkVersion": 26,
             "buildArchs": [
               "arm64-v8a",
               "x86_64"
             ],
             "enableMinifyInReleaseBuilds": true,
-            "extraProguardRules": "# WorkManager/Room: generated *_Impl classes are created by reflection\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.impl.** { *; }\n-keep class androidx.work.** { *; }\n# Native (JNI) libraries\n-keep class com.sherpaonnx.** { *; }\n-keep class com.k2fsa.sherpa.onnx.** { *; }\n-keep class ai.onnxruntime.** { *; }\n-keep class com.eko.** { *; }\n-keep class com.drpogodin.reactnativefs.** { *; }"
+            "extraProguardRules": "# WorkManager/Room: generated *_Impl classes are created by reflection\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.impl.** { *; }\n-keep class androidx.work.** { *; }\n# Native (JNI) libraries\n-keep class com.sherpaonnx.** { *; }\n-keep class com.k2fsa.sherpa.onnx.** { *; }\n-keep class ai.onnxruntime.** { *; }\n-keep class com.eko.** { *; }\n-keep class com.drpogodin.reactnativefs.** { *; }\n-keep class com.swmansion.rnexecutorch.** { *; }\n-keep class org.pytorch.executorch.** { *; }\n-keep class com.facebook.jni.** { *; }\n-keep class com.ReactNativeBlobUtil.** { *; }"
           }
         }
       ],
@@ -78,7 +80,8 @@
           "calendarPermission": "Kurisu reads today's events for your briefing and adds events you ask her to."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "react-native-blob-util"
     ],
     "experiments": {
       "typedRoutes": true

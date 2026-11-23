@@ -75,7 +75,7 @@ export default function SplashScreen() {
           </View>
 
           <View className="mt-8 flex-row items-center gap-3">
-            {['POWERED BY GEMINI', 'LIVE WEB SEARCH'].map((chip) => (
+            {['ON-DEVICE AI', 'WORKS OFFLINE'].map((chip) => (
               <HudFrame key={chip} corner={6} color={HUD.holoDim} className="px-3.5 py-1.5">
                 <Text style={[MONO, { color: HUD.textMuted }]} className="text-[10.5px] tracking-[1.5px]">
                   {chip}
@@ -98,7 +98,7 @@ export default function SplashScreen() {
           </Pressable>
 
           <Text style={[MONO, { color: HUD.textDim }]} className="mt-6 text-[10px] tracking-[2px]">
-            BUILD 0.3.0 · GEMINI CORE
+            BUILD 0.3.0 · ON-DEVICE CORE
           </Text>
         </Animated.View>
       </SafeAreaView>

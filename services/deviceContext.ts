@@ -100,11 +100,11 @@ function partOfDay(d: Date) {
  * Compact status line appended to the user's latest message (not the system prompt), so the
  * cached system prompt + history prefix stays identical between turns.
  */
-export function formatSnapshot(s: DeviceSnapshot): string {
+export function formatSnapshot(s: DeviceSnapshot, { battery = true }: { battery?: boolean } = {}): string {
   // Kept short: it is stored with every user turn (and replayed, so the prompt prefix stays cacheable).
   const date = s.now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   const parts = [`${formatClock(s.now)} ${partOfDay(s.now)}, ${date}`];
-  if (s.battery != null) parts.push(`battery ${s.battery}%${s.charging ? ' charging' : ''}${s.lowPower ? ' low-power' : ''}`);
+  if (battery && s.battery != null) parts.push(`battery ${s.battery}%${s.charging ? ' charging' : ''}${s.lowPower ? ' low-power' : ''}`);
   if (!s.online) parts.push('offline');
   if (s.events.length) {
     parts.push(

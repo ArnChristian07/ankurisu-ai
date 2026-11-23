@@ -230,12 +230,12 @@ export default function ChatScreen() {
   const brainLabel = thinking
     ? 'THINKING…'
     : brain.status === 'ready'
-      ? `GEMINI · ${brain.tokensPerSecond ? `${brain.tokensPerSecond.toFixed(0)} TOK/S` : 'READY'}`
+      ? `ON-DEVICE · ${brain.tokensPerSecond ? `${brain.tokensPerSecond.toFixed(0)} TOK/S` : 'READY'}`
       : brain.status === 'checking'
-        ? 'CONNECTING…'
-        : brain.status === 'error'
-          ? 'API KEY REJECTED · CHECK SETTINGS'
-          : 'NO API KEY · ADD ONE IN SETTINGS';
+        ? 'STARTING…'
+        : brain.status === 'unsupported'
+          ? 'NEEDS A DEVELOPMENT BUILD'
+          : 'NO BRAIN · DOWNLOAD IT IN SETTINGS';
 
   return (
     <View className="flex-1" style={{ backgroundColor: HUD.bg }}>
